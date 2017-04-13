@@ -281,24 +281,35 @@ static void job(double exec_time, double program_end, int lock_od, double cs_len
 	}
 }
 
-#define OPTSTR "p:c:wlveo:F:s:m:q:r:X:L:Q:iRu:U:Bhd:C:S::TD:E:"
+#define OPTSTR "p:c:wlveo:F:s:m:q:r:X:L:Q:iRu:U:Bhd:C:S::TD:E:Z:"
 
 int main(int argc, char** argv)
 {
 	int ret;
-	lt_t wcet;
-	lt_t period, deadline;
+#ifdef SUPPORT_MC
+    int i;
+    int index;
+	lt_t wcet[5];
+    lt_t period[5];
+	lt_t deadline[5];
+#else
+    lt_t wcet;
+    lt_t period;
+    lt_t deadline;
+#endif
 	lt_t phase;
 	lt_t inter_arrival_time;
 	double inter_arrival_min_ms = 0, inter_arrival_max_ms = 0;
-	double wcet_ms, period_ms, underrun_ms = 0;
+	double wcet_ms = 0, period_ms = 0, underrun_ms = 0;
 	double underrun_frac = 0;
 	double offset_ms = 0, deadline_ms = 0;
 	unsigned int priority = LITMUS_NO_PRIORITY;
 	int migrate = 0;
 	int cluster = 0;
 	int reservation = -1;
+#ifndef SUPPORT_MC
 	int create_reservation = 0;
+#endif
 	int opt;
 	int wait = 0;
 	int test_loop = 0;
@@ -335,6 +346,10 @@ int main(int argc, char** argv)
 	int protocol = -1;
 	double cs_length = 1; /* millisecond */
 
+    /*MC: System criticality*/
+    long system_crit = 1;
+    int arg_count = 3;/*Minimum  argument of budget, deadline and period.*/ 
+
 	progname = argv[0];
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
@@ -349,10 +364,12 @@ int main(int argc, char** argv)
 		case 'r':
 			reservation = want_non_negative_int(optarg, "-r");
 			break;
+#ifndef SUPPORT_MC
 		case 'R':
 			create_reservation = 1;
 			reservation = getpid();
 			break;
+#endif
 		case 'q':
 			priority = want_non_negative_int(optarg, "-q");
 			if (!litmus_is_valid_fixed_prio(priority))
@@ -446,6 +463,10 @@ int main(int argc, char** argv)
 			verbose = 1;
 			report_interrupts = 1;
 			break;
+        case 'Z':
+            system_crit = want_non_negative_int(optarg, "-Z");
+            arg_count = system_crit * arg_count;
+            break;
 		case ':':
 			usage("Argument missing.");
 			break;
@@ -492,44 +513,82 @@ int main(int argc, char** argv)
 		}
 		return 0;
 	}
+    
+  //  if((argc - optind) < arg_count)
+  //     printf("First check failed.");
+  //  if((argc - optind < 2) && !file)
+//        printf("Second check failed.");
 
-	if (argc - optind < 3 || (argc - optind < 2 && !file))
+    printf("Argument count:%d -- argc:%d -- optind:%d\n", arg_count, argc, optind);
+	if (((argc - optind) < arg_count) || (argc - optind < 2 && !file))
 		usage("Arguments missing.");
-
-	wcet_ms   = want_positive_double(argv[optind + 0], "WCET");
-	period_ms = want_positive_double(argv[optind + 1], "PERIOD");
-
-	wcet   = ms2ns(wcet_ms);
-	period = ms2ns(period_ms);
-	phase  = ms2ns(offset_ms);
-	deadline = ms2ns(deadline_ms);
-	if (wcet <= 0)
-		usage("The worst-case execution time must be a "
-				"positive number.");
-	if (offset_ms < 0)
-		usage("The synchronous release delay must be a "
-				"non-negative number.");
-
-	if (period <= 0)
-		usage("The period must be a positive number.");
-	if (!file && wcet > period) {
-		usage("The worst-case execution time must not "
-				"exceed the period.");
-	}
+        
+    phase  = ms2ns(offset_ms);
+    if (offset_ms < 0)
+        usage("The synchronous release delay must be a "
+    				"non-negative number.");
+#ifdef SUPPORT_MC
+    index = 0;
+    for(i = 0; i< arg_count; i += 3){
+    	wcet_ms   = want_positive_double(argv[optind + i], "WCET");
+    	period_ms = want_positive_double(argv[optind + i + 1], "PERIOD");
+        deadline_ms = want_positive_double(argv[optind + i + 2], "DEADLINE");
+    	wcet[index]   = ms2ns(wcet_ms);
+    	period[index] = ms2ns(period_ms);
+    	deadline[index] = ms2ns(deadline_ms);
+        printf("Values: %f - %f - %f\n", wcet_ms, period_ms, deadline_ms);
+        printf("Assigned values: %llu - %llu - %llu\n", wcet[index], period[index], deadline[index]);
+    	if (wcet[index] <= 0)
+    		usage("The worst-case execution time must be a "
+    				"positive number.");
+    	    
+    	if (period[index] <= 0)
+    		usage("The period must be a positive number.");
+    	if (!file && wcet[index] > period[index]) {
+    		usage("The worst-case execution time must not "
+    				"exceed the period.");
+        }
+        index++;
+    }
+    index = 0;
+#else
+    wcet_ms    = want_positive_double(argv[optind], "WCET");
+    period_ms   = want_positive_double(argv[optind + 1], "PERIOD");
+    wcet       = ms2ns(wcet_ms);
+    period     = ms2ns(period_ms);
+    deadline   = ms2ns(deadline_ms);
+    if (wcet <= 0)
+        usage("The worst-case execution time must be a "
+                "positive number.");
+        
+    if (period <= 0)
+        usage("The period must be a positive number.");
+    if (!file && wcet > period) {
+        usage("The worst-case execution time must not "
+                "exceed the period.");
+    }
+   deadline_ms = deadline;
+#endif
 
 	if (file)
 		get_exec_times(file, column, &num_jobs, &exec_times);
 
+    /*TODO: Handle MC Case for file handling.*/
 	if (argc - optind < 3 && file)
 		/* If duration is not given explicitly,
 		 * take duration from file. */
 		duration = num_jobs * period_ms * 0.001;
-	else
-		duration = want_positive_double(argv[optind + 2], "DURATION");
-
-	if (underrun_frac) {
-		underrun_ms = underrun_frac * wcet_ms;
-	}
+	else{
+        printf("Duration: %s\n", argv[optind + arg_count]);
+#ifdef SUPPORT_MC
+		duration = want_positive_double(argv[optind + arg_count], "DURATION");
+#else
+		duration = want_positive_double(argv[optind + 3], "DURATION");
+	    if (underrun_frac) {
+		    underrun_ms = underrun_frac * wcet_ms;
+	    }
+#endif
+    }
 
 	if (migrate) {
 		ret = be_migrate_to_domain(cluster);
@@ -539,14 +598,37 @@ int main(int argc, char** argv)
 
 
 	init_rt_task_param(&param);
-	param.exec_cost = wcet;
-	param.period = period;
+#ifdef SUPPORT_MC
+	param.exec_cost = wcet[0];
+	param.period = period[0];
+    if(deadline == 0)
+	    param.relative_deadline = period[0];
+#else
+    param.exec_cost = wcet;
+    param.period = period;
+    if(deadline == 0)
+        param.relative_deadline = period;
+#endif
 	param.phase  = phase;
-	param.relative_deadline = deadline;
 	param.priority = priority == LITMUS_NO_PRIORITY ? LITMUS_LOWEST_PRIORITY : priority;
 	param.cls = class;
 	param.budget_policy = (want_enforcement) ?
 			PRECISE_ENFORCEMENT : NO_ENFORCEMENT;
+
+#ifdef SUPPORT_MC
+    /*MC Parameters.*/
+    for(i=0; i< system_crit; i++){
+        param.mc_param.period[i] = period[i];
+        param.mc_param.deadline[i] = period[i]; /*Assuming implicit task.*/
+        param.mc_param.budget[i] = wcet[i];
+        printf("Parameters: %llu - %llu - %llu\n", period[i], period[i], wcet[i]);
+    }
+    param.mc_param.criticality = system_crit;
+    /*Enforcement enabled by default for MC.*/
+    param.budget_policy = PRECISE_ENFORCEMENT;
+#endif
+
+
 	if (migrate) {
 		if (reservation >= 0)
 			param.cpu = reservation;
@@ -557,6 +639,8 @@ int main(int argc, char** argv)
 	if (ret < 0)
 		bail_out("could not setup rt task params");
 
+#ifndef SUPPORT_MC
+    /*Currently Reservation disabled for MC.*/
 	if (create_reservation) {
 		struct reservation_config config;
 		memset(&config, 0, sizeof(config));
@@ -571,14 +655,13 @@ int main(int argc, char** argv)
 		if (ret < 0)
 			bail_out("failed to create reservation");
 	}
+#endif
 
 	srand48(time(NULL));
-
-
 	init_litmus();
-
 	start = wctime();
 	ret = task_mode(LITMUS_RT_TASK);
+    printf("Return value: %d\n", ret);
 	if (ret != 0)
 		bail_out("could not become RT task");
 
@@ -601,10 +684,21 @@ int main(int argc, char** argv)
 		start = wctime();
 	}
 
+#ifndef SUPPORT_MC
 	if (cp)
 		next_release = cp->release + period;
 	else
 		next_release = litmus_clock() + period;
+	inter_arrival_time = period;
+#else
+    /*TODO:Add ioctl to retrieve system criticality and use the same.
+     * currently lowest crit period used. 
+     * */
+	if (cp)
+		next_release = cp->release + period[0];
+	else
+		next_release = litmus_clock() + period[0];
+#endif
 
 	/* default: periodic releases */
 	if (!inter_arrival_min_ms)
@@ -614,7 +708,6 @@ int main(int argc, char** argv)
 
 	if (inter_arrival_min_ms > inter_arrival_max_ms)
 		inter_arrival_max_ms = inter_arrival_min_ms;
-	inter_arrival_time = period;
 
 	/* main job loop */
 	cur_job = 0;
@@ -713,8 +806,13 @@ int main(int argc, char** argv)
 				if (verbose && cp)
 					printf("\tsleep_next_period() until %"
 					       PRIu64 "ns (=%.2fs)\n",
+#ifndef SUPPORT_MC
 					       (uint64_t) (cp->release + period),
 					       ns2s((double) (cp->release + period)));
+#else
+					       (uint64_t) (cp->release + period[0]),
+					       ns2s((double) (cp->release + period[0])));
+#endif
 				sleep_next_period();
 			}
 		}
