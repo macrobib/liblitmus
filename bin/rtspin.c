@@ -11,7 +11,7 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 #include <errno.h>
-
+#include <signal.h>
 #include "litmus.h"
 #include "common.h"
 
@@ -78,6 +78,10 @@ const char *usage_msg =
 	"    CS-LENGTH is expected in milliseconds.\n"
 	"    FOOTPRINT is expected in number of pages\n";
 
+
+/*Introduce a budget overrun.*/
+void sig_handler(int signum);
+static int overrun = 0;
 
 static void usage(char *error) {
 	if (error)
@@ -188,12 +192,17 @@ static int loop_for(double exec_time, double emergency_exit)
 {
 	double last_loop = 0, loop_start;
 	int tmp = 0;
-
+    double exec_var = exec_time;
 	double start = cputime();
 	double now = cputime();
 
-	while (now + last_loop < start + exec_time) {
+	while (now + last_loop < start + exec_var) {
 		loop_start = now;
+        if(overrun){
+            /*Cause a 40% budget overrun.*/
+            exec_var += (exec_var*0.4);
+            printf("MC: Budget overrun initiated.\n");
+        }
 		if (nr_of_pages)
 			tmp += loop_once_with_mem();
 		else
@@ -349,7 +358,7 @@ int main(int argc, char** argv)
     /*MC: System criticality*/
     long system_crit = 1;
     int arg_count = 3;/*Minimum  argument of budget, deadline and period.*/ 
-
+    signal(SIGUSR1, sig_handler);
 	progname = argv[0];
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
@@ -829,4 +838,12 @@ int main(int argc, char** argv)
 		munlock(base, rss);
 
 	return 0;
+}
+
+void sig_handler(int signum){
+    printf("Recieved handler for %d\n", signum);
+    if(overrun)
+        overrun = 0;
+    else
+        overrun = 1;
 }

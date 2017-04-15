@@ -20,13 +20,16 @@ int task_mode(int mode)
 
 	memset(&param, 0, sizeof(param));
 	param.sched_priority = 0;
+    printf("Policy: %d -- Old Mode: %d\n", policy, old_mode);
 	if (old_mode == LITMUS_RT_TASK && mode == BACKGROUND_TASK) {
 		/* transition to normal task */
 		return sched_setscheduler(me, SCHED_NORMAL, &param);
 	} else if (old_mode == BACKGROUND_TASK && mode == LITMUS_RT_TASK) {
 		/* transition to RT task */
+        printf("Transition to rt task..\n");
 		return sched_setscheduler(me, SCHED_LITMUS, &param);
 	} else {
+        printf("Weird state of task params..\n");
 		errno = -EINVAL;
 		return -1;
 	}

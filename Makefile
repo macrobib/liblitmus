@@ -12,7 +12,7 @@ host-arch := $(shell uname -m | \
 ARCH ?= ${host-arch}
 
 # LITMUS_KERNEL -- where to find the litmus kernel?
-LITMUS_KERNEL ?= ../litmus-rt
+LITMUS_KERNEL ?= ../mc-litmus-rt
 
 
 # ##############################################################################
@@ -48,6 +48,9 @@ CPPFLAGS = ${flags-api} ${flags-${ARCH}} -DARCH=${ARCH} ${headers}
 CFLAGS   = ${flags-debug}
 LDFLAGS  = ${flags-${ARCH}}
 
+# Enable MC Support.
+CFLAGS += -DSUPPORT_MC
+
 # how to link against liblitmus
 liblitmus-flags = -L${LIBLITMUS} -llitmus
 
@@ -67,7 +70,7 @@ AR  := ${CROSS_COMPILE}${AR}
 
 all     = lib ${rt-apps}
 rt-apps = cycles base_task rt_launch rtspin release_ts measure_syscall \
-	  base_mt_task uncache runtests resctl
+	  base_mt_task uncache runtests resctl syscrit
 
 .PHONY: all lib clean dump-config TAGS tags cscope help doc
 
@@ -225,6 +228,7 @@ lib-measure_syscall = -lm
 
 obj-resctl = resctl.o
 
+obj-syscrit  = syscrit.o common.o
 
 # ##############################################################################
 # Build everything that depends on liblitmus.

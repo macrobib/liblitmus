@@ -18,6 +18,13 @@ pid_t gettid(void)
 	return syscall(__NR_gettid);
 }
 
+/*Set system criticality.*/
+int set_system_criticality(int criticality){
+    union litmus_syscall_args args;
+    args.sys_crit = criticality;
+    return litmus_syscall(LRT_set_system_criticality, (unsigned long)&args);
+}
+
 int set_rt_task_param(pid_t pid, struct rt_task *param)
 {
 	union litmus_syscall_args args;

@@ -49,6 +49,9 @@ extern "C" {
  */
 #define SCHED_LITMUS 7
 
+/*Set the system criticality.*/
+int set_system_criticality(int criticality);
+
 /**
  * Initialise a real-time task param struct
  * @param param Pointer to the struct to initialise
