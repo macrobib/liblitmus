@@ -6,6 +6,7 @@ import json
 import os
 import glob
 from pprint import pprint
+from task import task
 
 class json_handler:
 
@@ -29,28 +30,39 @@ class json_handler:
                 taskset = json.load(f)
         except (OSError, IOError) as e:
             print("Error opening file: ", e)
-        return file
+        return taskset
             
 
-    def parse_files(self, file = None):
+    def parse_files(self, files = None):
         """Create the task structure."""
         crit = None
         taskset = []
-        if file:
-            taskset.append(read_task_set(file))
+        if files:
+            for file in files:
+                print(file)
+                taskset.append(self.read_taskset(file))
         else:
             # Parse the default files and read taskset.
             for file in glob.glob('./data/*.json'):
-                with open(file, 'r') as f:
-                    taskset.append(read_taskset(file))
+                taskset.append(self.read_taskset(file))
         # Process task set.
-        for task in taskset:
-            if task["syscrit"] > self.crit:
-                self.crit = taskset["syscrit"]
-            if not task["high"]:
-                self.high_tasks.append(task["high"])
-            if not task["low"]:
-                self.low_tasks.append(task["low"])
+        for t in taskset:
+            if t['syscrit'] > self.crit:
+                self.crit = t['syscrit']
+            if t["high"]:
+                for hi_task in t["high"]:
+                    print(hi_task)
+                    self.high_tasks.append(task(hi_task))
+            if t["low"]:
+                for lo_task in t["low"]:
+                    print(lo_task)
+                    self.low_tasks.append(task(lo_task))
+    
+
+    def pretty_print_data(self):
+        """Debugging stub to print data."""
+        pprint(self.high_tasks[0].get_crit())
+        pprint(self.low_tasks[0].get_crit())
 
 
     def get_system_criticality(self):
@@ -72,3 +84,12 @@ class json_handler:
         """Get the dictionary of all low crit tasks."""
         return self.low_tasks
 
+# ******* Test stub*******************
+def main():
+    jshn = json_handler()
+    jshn.parse_files(["./data/taskset.json"])
+    jshn.pretty_print_data()
+
+if __name__ == '__main__':
+    main()
+# ************************************

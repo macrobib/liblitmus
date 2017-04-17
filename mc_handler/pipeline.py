@@ -1,8 +1,7 @@
 #!/usr/bin/python3.5
 
 """Main process pipe-line, read taskset , launch processes."""
-import json_handler as json_handler
-import signal_handler as signal_handler
+import task_handler as task_handler
 import sys
 import subprocess
 import os
@@ -18,11 +17,6 @@ def main():
         print("Provide input as: ./pipeline <crit> ")
         sys.exit()
     # raise system criticality.
-    args = (EXEC_BIN, sys_crit)
-    popen = subprocess.Popen(args, stdout=subprocess.PIPE)
-    popen.wait()
-    output = popen.stdout.read()
-    print(output)
 
     # Process task set.
     
