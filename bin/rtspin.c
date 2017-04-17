@@ -198,11 +198,6 @@ static int loop_for(double exec_time, double emergency_exit)
 
 	while (now + last_loop < start + exec_var) {
 		loop_start = now;
-        if(overrun){
-            /*Cause a 40% budget overrun.*/
-            exec_var += (exec_var*0.4);
-            printf("MC: Budget overrun initiated.\n");
-        }
 		if (nr_of_pages)
 			tmp += loop_once_with_mem();
 		else
@@ -221,7 +216,6 @@ static int loop_for(double exec_time, double emergency_exit)
 			break;
 		}
 	}
-
 	return tmp;
 }
 
@@ -328,7 +322,7 @@ int main(int argc, char** argv)
 	int want_enforcement = 0;
 	double duration = 0, start = 0;
 	double *exec_times = NULL;
-	double scale = 0.95;
+	double scale = 0.92;
 	task_class_t class = RT_CLASS_HARD;
 	int cur_job = 0, num_jobs = 0;
 	struct rt_task param;
@@ -359,6 +353,7 @@ int main(int argc, char** argv)
     long system_crit = 1;
     int arg_count = 3;/*Minimum  argument of budget, deadline and period.*/ 
     signal(SIGUSR1, sig_handler);
+    signal(SIGUSR2, sig_handler);
 	progname = argv[0];
 
 	while ((opt = getopt(argc, argv, OPTSTR)) != -1) {
@@ -777,6 +772,10 @@ int main(int argc, char** argv)
 			if (acet < 0)
 				acet = 0;
 		}
+        if(overrun){
+            printf("Budget overrun called..\n");
+            acet = 1.5 * acet;
+        }
 		/* scale exec time */
 		acet *= scale;
 
@@ -842,8 +841,15 @@ int main(int argc, char** argv)
 
 void sig_handler(int signum){
     printf("Recieved handler for %d\n", signum);
-    if(overrun)
-        overrun = 0;
-    else
+    if(signum == SIGUSR1){
+        printf("SIGUSR1 handler called..\n");
         overrun = 1;
+    }
+    else if(signum == SIGUSR2){
+        printf("SIGUSR2 handler called.\n");
+        overrun = 0;
+    }
+    else{
+        printf("Phantom signal recieved.");
+    }
 }
