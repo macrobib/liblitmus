@@ -82,6 +82,8 @@ const char *usage_msg =
 /*Introduce a budget overrun.*/
 void sig_handler(int signum);
 static int overrun = 0;
+/*Store time deltas to use during a criticality change.*/
+static double time_deltas[5] = {0., 0., 0., 0., 0.};
 
 static void usage(char *error) {
 	if (error)
@@ -192,6 +194,8 @@ static int loop_for(double exec_time, double emergency_exit)
 {
 	double last_loop = 0, loop_start;
 	int tmp = 0;
+//    unsigned int crit = 0;
+//    double starting_budget = exec_time;
     double exec_var = exec_time;
 	double start = cputime();
 	double now = cputime();
@@ -203,6 +207,12 @@ static int loop_for(double exec_time, double emergency_exit)
 		else
 			tmp += loop_once();
 		now = cputime();
+//        /*Boost budget if criticality changed.*/
+//        if(get_current_criticality(&crit)){
+//            printf("Criticality: %d\n", crit);
+//            exec_var = starting_budget + time_deltas[crit];
+//        }
+
 		last_loop = now - loop_start;
 		if (emergency_exit && wctime() > emergency_exit) {
 			/* Oops --- this should only be possible if the
@@ -336,6 +346,7 @@ int main(int argc, char** argv)
 	int linux_sleep = 0; /* use Linux API for periodic activations? */
 	lt_t next_release;
 
+    unsigned int crit = 0;
 	int verbose = 0;
 	unsigned int job_no;
 	struct control_page* cp;
@@ -350,7 +361,7 @@ int main(int argc, char** argv)
 	double cs_length = 1; /* millisecond */
 
     /*MC: System criticality*/
-    long system_crit = 1;
+    long task_crit = 1;
     int arg_count = 3;/*Minimum  argument of budget, deadline and period.*/ 
     signal(SIGUSR1, sig_handler);
     signal(SIGUSR2, sig_handler);
@@ -468,8 +479,8 @@ int main(int argc, char** argv)
 			report_interrupts = 1;
 			break;
         case 'Z':
-            system_crit = want_non_negative_int(optarg, "-Z");
-            arg_count = system_crit * arg_count;
+            task_crit = want_non_negative_int(optarg, "-Z");
+            arg_count = task_crit * arg_count;
             break;
 		case ':':
 			usage("Argument missing.");
@@ -554,6 +565,7 @@ int main(int argc, char** argv)
         }
         index++;
     }
+    wcet_ms = ns2ms(wcet[0]);
     index = 0;
 #else
     wcet_ms    = want_positive_double(argv[optind], "WCET");
@@ -621,13 +633,15 @@ int main(int argc, char** argv)
 
 #ifdef SUPPORT_MC
     /*MC Parameters.*/
-    for(i=0; i< system_crit; i++){
+    for(i=0; i< task_crit; i++){
         param.mc_param.period[i] = period[i];
         param.mc_param.deadline[i] = period[i]; /*Assuming implicit task.*/
         param.mc_param.budget[i] = wcet[i];
-        printf("Parameters: %llu - %llu - %llu\n", period[i], period[i], wcet[i]);
+        if(i>0)
+            time_deltas[i] = (wcet[i] - wcet[i-1]);
+        printf("Parameters: %llu - %llu - %f\n", period[i], wcet[i], ns2ms(time_deltas[i]));
     }
-    param.mc_param.criticality = system_crit;
+    param.mc_param.criticality = task_crit - 1;
     /*Enforcement enabled by default for MC.*/
     param.budget_policy = PRECISE_ENFORCEMENT;
 #endif
@@ -702,6 +716,7 @@ int main(int argc, char** argv)
 		next_release = cp->release + period[0];
 	else
 		next_release = litmus_clock() + period[0];
+    inter_arrival_time = period[0];
 #endif
 
 	/* default: periodic releases */
@@ -773,8 +788,14 @@ int main(int argc, char** argv)
 				acet = 0;
 		}
         if(overrun){
+            /*Cause a budget overrun by running for high crit budget.*/
             printf("Budget overrun called..\n");
-            acet = 1.5 * acet;
+            if(get_current_criticality(&crit)){
+                printf("acet value: %f delta:%f\n", acet, ns2s(time_deltas[crit+1]));
+                if(crit + 1 < task_crit)
+                    acet += (ns2s(time_deltas[crit + 1]) * scale);
+                printf("acet updatd: %f\n", acet);
+            }
         }
 		/* scale exec time */
 		acet *= scale;
@@ -785,8 +806,17 @@ int main(int argc, char** argv)
 				(acet * 1000 / wcet_ms) * 100);
 
 		/* burn cycles */
+        /*Boost budget if criticality changed.*/
+        if(get_current_criticality(&crit) && !overrun){
+            printf("acet value: %f delta:%f\n", acet, ns2s(time_deltas[crit]));
+            acet += (ns2s(time_deltas[crit]) * scale);
+            printf("acet updatd: %f\n", acet);
+        }
+        else{
+            /*Overrun was induced by sighandler, reset the same.*/
+            overrun = 0;
+        }
 		job(acet, start + duration, lock_od, cs_length * 0.001);
-
 		/* wait for periodic job activation (unless sporadic) */
 		if (!sporadic) {
 			/* periodic job activations */

@@ -4,7 +4,7 @@
 
 /* imported from the kernel source tree */
 #include "asm/unistd.h"
-
+#include <stdio.h>
 /* for syscall() */
 #include <unistd.h>
 
@@ -90,6 +90,16 @@ int get_job_no(unsigned int *job_no)
 	}
 }
 
+int get_current_criticality(unsigned int* crit){
+    int status = 0;
+    struct control_page* cp = get_ctrl_page();
+    if(likely(cp != NULL)){
+        *crit = cp->active_crit;
+        status = 1;
+    }
+    return status;
+}
+
 int wait_for_job_release(unsigned int job_no)
 {
 	return litmus_syscall(LRT_wait_for_job_release, job_no);
@@ -119,3 +129,5 @@ int get_current_budget(
 	args.get_current_budget.remaining = remaining;
 	return litmus_syscall(LRT_get_current_budget, (unsigned long) &args);
 }
+
+

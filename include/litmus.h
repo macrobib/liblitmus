@@ -52,6 +52,7 @@ extern "C" {
 /*Set the system criticality.*/
 int set_system_criticality(int criticality);
 
+int get_current_criticality(unsigned int* active_crit);
 /**
  * Initialise a real-time task param struct
  * @param param Pointer to the struct to initialise
